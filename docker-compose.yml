@@ -1,0 +1,10 @@
+version: '3'
+
+services:
+  pvt:
+    container_name: pvt
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    ports:
+      - "8001:8001"
