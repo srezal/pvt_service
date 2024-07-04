@@ -9,3 +9,4 @@ class PvtRequest(BaseModel):
     gamma_wat: confloat(ge=0.98, le=1.2) = Field(title="Отн. плотность воды")
     wct: confloat(ge=0, le=100) = Field(title="Обводненность, %")
     rp: confloat(ge=0) = Field(title="Газовый фактор, м3/т")
+    q_liq: float = Field(title="Поверхностный объём жидкости, м3")
