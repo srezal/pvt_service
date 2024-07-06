@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 services:
   pvt:
@@ -8,3 +8,13 @@ services:
       dockerfile: ./docker/Dockerfile
     ports:
       - "8001:8001"
+    networks:
+      gpncr-bridge:
+        aliases:
+          - pvt
+
+
+networks:
+  gpncr-bridge:
+    external:
+      name: gpncr-network
