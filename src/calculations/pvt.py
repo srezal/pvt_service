@@ -15,6 +15,22 @@ def calc_saturated_oil_volumetric_coeff(R_sb: float, GammaGas: float, GammaOil: 
     return 0.972 + (147 / 10**6) * (5.61458333333 * R_sb * (GammaGas / GammaOil)**0.5 + 2.25 * T - 574.5875)**1.175
 
 
+def calc_compressibility(R_sb: float, T: float, GammaGas: float, GammaOil: float, P_bp: float):
+    """
+    Вычисление коэффициента сжимаемости
+    Parameters
+    ----------
+    :param R_sb: газовый фактор, м3/м3.
+    :param T: пластовая температура, F
+    :param GammaGas: отн. плотность газа, доли ед.
+    :param GammaOil: отн. плотность нефти, доли ед.
+    :param P_bp: давление в точке насыщения, Psi
+    :return: коэффициент сжимаемости, безразмерный.
+    """
+    R_sb = R_sb / 0.17810760667903522 # Перевод в куб. фут / баррель. В коде перевод есть, в методичке нет (
+    A = (-1.433 + 5 * R_sb + 17.2 * T - 1.180 * GammaGas + 12.61 * gamma_oil_api(GammaOil)) * 10**(-5)
+    return A / P_bp
+
 def calc_unsaturated_oil_volumetric_coeff(R_sb: float, GammaGas: float, GammaOil: float, T: float, P):
     """
     Вычисление объёмного коэффициента ненасыщенной нефти
@@ -28,15 +44,14 @@ def calc_unsaturated_oil_volumetric_coeff(R_sb: float, GammaGas: float, GammaOil
     :return: объёмный коэффициент, безразмерный.
     """
     yg = 1.2254503 + (0.001638 * T) - (1.76875 / GammaOil)
-    P_bp = (10**yg / (1.9243101395421235 * 10**(-6))) * (R_sb / GammaGas)**(1/1.2048192771084338) # В барах
+    P_bp = (10**yg / (1.9243101395421235 * 10**(-6))) * (R_sb / GammaGas)**(1/1.2048192771084338) # Давление в точке насыщения, барах
     b_bpp = calc_saturated_oil_volumetric_coeff(R_sb, GammaGas, GammaOil, T)
     T = kelvin_to_fah(T)
-    R_sb = R_sb / 0.17810760667903522 # В коде перевод есть, в методичке нет (
-    A = (-1.433 + 5 * R_sb + 17.2 * T - 1.180 * GammaGas + 12.61 * gamma_oil_api(GammaOil)) * 10**(-5)
     p_res_in_psi = pascal_to_psi(P)
     P_bp_in_psi = pascal_to_psi(bar_to_pascal(P_bp))
-    C = A / P_bp_in_psi
-    return b_bpp * e**(C*(P_bp_in_psi - p_res_in_psi))
+    delta_P = P_bp_in_psi - p_res_in_psi
+    C = calc_compressibility(R_sb, T, GammaGas, GammaOil, P_bp_in_psi)
+    return b_bpp * e**(C*delta_P)
 
 
 def calc_mu_oil(T: float, GammaOil: float, R_s: float):
@@ -87,9 +102,9 @@ def calc_pvt(P: float, T: float, GammaOil: float, GammaGas: float,
     """
 
     # Расчёт поверхностных объёмов
-    Rp = Rp * GammaOil
+    Rp = Rp / GammaOil # Перевод из м3/т в м3/м3
 
-    V_liq = QLiq
+    V_liq = QLiq / (24 * 3600)
     V_wat = V_liq * Wct
     V_oil = V_liq * (1 - Wct)
     V_gas = V_oil * Rp
@@ -97,16 +112,15 @@ def calc_pvt(P: float, T: float, GammaOil: float, GammaGas: float,
     # Расчёт газосодержания нефти
     yg = 1.2254503 + 0.001638 * T - (1.76875 / GammaOil)
     R_s = GammaGas * (1.9243101395421235 * 10**(-6) * P / 10**yg)**1.2048192771084338
-    print(R_s)
 
     # Расчёт параметров нефти
-    if Rp > R_s: # Весь объём газа не сможет раствориться в нефти, то есть нефть насыщенная
+    if Rp > R_s: # Весь объём газа не сможет раствориться в нефти, так как нефть насыщенная
         b_oil = calc_saturated_oil_volumetric_coeff(R_s, GammaGas, GammaOil, T)
-    else: # Нефть недонасыщенная, поэтому весь объём газа не может раствориться в ней и будет присутствовать в сободном состоянии
+    else: # Нефть недонасыщенная, поэтому весь объём газа сможет раствориться в ней
         b_oil = calc_unsaturated_oil_volumetric_coeff(Rp, GammaGas, GammaOil, T, P)
     V_cond_oil = V_oil * b_oil
     rho_oil = 1000 * (GammaOil + 1.2217 * R_s * GammaGas / 1000) / b_oil
-    mu_oil = calc_mu_oil(T, GammaOil, R_s)
+    mu_oil = calc_mu_oil(T, GammaOil, Rp)
 
     # Расчёт параметров газа
     b_g = 350.958 * T / P
@@ -132,7 +146,7 @@ def calc_pvt(P: float, T: float, GammaOil: float, GammaGas: float,
     mu_mix = mu_liq * (1 - GF) + mu_gas * GF
 
     result = {
-        "QMix": V_cond_mix / (24 * 3600),
+        "QMix": V_cond_mix,
         "MuMix": mu_mix,
         "RhoMix": rho_mix
     }
